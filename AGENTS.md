@@ -525,3 +525,24 @@ If Turbopack produces unexpected errors after switching branches or pulling, che
 Next.js strips internal headers from incoming requests via `filterInternalHeaders()` in `packages/next/src/server/lib/server-ipc/utils.ts`. This runs at the entry point in `packages/next/src/server/lib/router-server.ts` before any server code executes. Only headers listed in the `INTERNAL_HEADERS` array are stripped.
 
 **When reviewing PRs: if new code reads a request header that is not a standard HTTP header (like `content-type`, `accept`, `user-agent`, `host`, `authorization`, `cookie`, etc.), flag it for security review.** The header may be forgeable by an external attacker if it is not in the `INTERNAL_HEADERS` filter list in `packages/next/src/server/lib/server-ipc/utils.ts`.
+
+## Base44 Dev Environment
+
+The Base44 dev environment (`docker-compose.base44.yml`) builds the Next.js framework from source and runs a demo app (`apps/playground/`) against the local build.
+
+### Setup order (non-obvious)
+
+1. `pnpm install --ignore-scripts` — install all workspace packages without running postinstall/prepare (avoids husky/git-configure issues in Docker).
+2. `node scripts/install-native.mjs` — download prebuilt `@next/swc-*` native bindings from npm (not compiled from Rust). Required for Turbopack.
+3. `pnpm exec turbo run build --filter=next...` — build `next` **and all its workspace dependencies** in topological order. Using `pnpm --filter=next build` alone fails because `@next/polyfill-nomodule`, `@next/polyfill-module`, etc. need their `dist/` built first.
+4. `cd apps/playground && pnpm exec next dev -p 3000 -H 0.0.0.0` — run the demo app with the locally-built framework.
+
+### Playground app (`apps/playground/`)
+
+A minimal App Router app with `next: "workspace:*"` linking the local build. Its `next.config.ts` sets `allowedDevOrigins` from `BASE44_PUBLIC_HOST_SUFFIX` so the preview proxy can access dev assets (`/_next/*`). Without this, the cross-site dev block (`block-cross-site-dev.ts`) returns 403 for HMR client and chunk requests.
+
+### Verification
+
+- `docker compose -f docker-compose.base44.yml ps` — container should be `healthy`.
+- `curl -s http://localhost:3000` — should return HTML with "Next.js is running from source".
+- Dev assets (`/_next/static/chunks/...`) should return 200.

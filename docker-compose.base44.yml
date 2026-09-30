@@ -1,0 +1,37 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.base44
+    working_dir: /app
+    volumes:
+      - .:/app
+      - next_deps:/app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - BASE44_PUBLIC_HOST_SUFFIX=${BASE44_PUBLIC_HOST_SUFFIX}
+      - BASE44_SANDBOX_HOST_DOMAIN=${BASE44_SANDBOX_HOST_DOMAIN}
+      - NEXT_TELEMETRY_DISABLED=1
+    command:
+      [
+        "sh",
+        "-ec",
+        "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install --ignore-scripts && node scripts/install-native.mjs && pnpm exec turbo run build --filter=next... && cd apps/playground && exec pnpm exec next dev -p 3000 -H 0.0.0.0",
+      ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 900s
+    restart: on-failure
+
+volumes:
+  next_deps:
